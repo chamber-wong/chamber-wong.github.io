@@ -1,11 +1,11 @@
 # Site settings
-title: Hux Blog
-SEOTitle: 黄玄的博客 | Hux Blog
+title: Chamber Blog
+SEOTitle: 王春博的博客 | Chamber Blog
 header-img: img/home-bg.jpg
-email: huxpro@gmail.com
-description: "关于前端与设计、黑客与画家 | 黄玄，Web & Mobile Lover，Software Engineer，UX Designer | 这里是 @Hux黄玄 的个人博客，与你一起发现更大的世界。"
-keyword: "黄玄, Hux黄玄, Hux, 鬼栈, huxpro, @huxpro, 黄玄的博客, Hux Blog, 博客, 个人网站, 互联网, Web, JavaScript, 前端, 设计"
-url: "https://huangxuan.me"              # your host, for absolute URL
+email: chamber.wong@gmail.com
+description: "关于java与大数据、黑客与人工智能 | 王春博，Java & BigData，Software Engineer，artificial intelligence（AI） | 这里是 @Chamber春博 的个人博客，与你一起发现更大的世界。"
+keyword: "王春博, Chamber春博, chamber, Java,  @Chamber, 王春博的博客, Chamber's Blog, 博客, 个人网站, 互联网, BigData, Java, 后端, python"
+url: "https://chambert.wang"              # your host, for absolute URL
 baseurl: ""                             # for example, '/blog' if your blog hosted on 'host/blog'
 
 # Publish posts or collection documents with a future date.
@@ -13,10 +13,10 @@ future: true
 
 # SNS settings
 RSS: false
-weibo_username:     huxpro
-zhihu_username:     huxpro
-github_username:    huxpro
-twitter_username:   huxpro
+weibo_username:     3613312783
+zhihu_username:     people/nong-feng-56/activities
+github_username:    chamber-wong
+twitter_username:   _nongfeng
 #facebook_username:  huxpro
 #linkedin_username:  firstname-lastname-idxxxx
 
