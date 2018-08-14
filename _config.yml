@@ -14,7 +14,7 @@ future: true
 # SNS settings
 RSS: false
 weibo_username:     3613312783
-zhihu_username:     people/nong-feng-56/activities
+zhihu_username:     nong-feng-56/activities
 github_username:    chamber-wong
 twitter_username:   _nongfeng
 #facebook_username:  huxpro
@@ -66,7 +66,7 @@ netease_comment: false
 
 # Google Analytics
 ga_track_id: 'UA-49627206-1'            # Format: UA-xxxxxx-xx
-ga_domain: huangxuan.me
+ga_domain: chambert.wang
 
 
 
