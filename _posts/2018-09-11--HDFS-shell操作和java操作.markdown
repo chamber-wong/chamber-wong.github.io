@@ -1,7 +1,7 @@
 ---
 layout:     post
 title:      "HDFS的shell操作和Java操作"
-subtitle:   ""
+subtitle:   "HDFS在linux上的基本增删改查的操作,和Java的api"
 date:       2018-09-11 12:00:00
 author:     "Chamber"
 header-img: "img/post-bg-2015.jpg"
