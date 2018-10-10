@@ -1,0 +1,344 @@
+---
+layout:     post
+title:      "java基础之流一"
+subtitle:   "字符流,字符缓冲流"
+date:       2018-08-17 12:00:00
+author:     "Chamber"
+header-img: "img/post-bg-2015.jpg"
+catalog: true
+tags:
+    - java
+    - 流
+    - Java基础
+    - 数据类型
+---
+# 流(IO流)
+
+> 作用实现两个设备之间的数据传输
+
+- **分类:**
+1. **根据操作的方式:** 输入流输出流
+2. **根据数据的类型:** 字节流和字符流
+
+## 字节流
+    
+> 传输的是字节,可以操作任意类型的数据 ------音频,视频,文件,图片等
+
+### 字节输入流:InputStream
+### 字节输出流:OutputStream
+
+## 字符流
+
+> 传输的是字节,不同的是在传输的过程中加入了编码的操作,让我们的操作更方便 ------文本
+
+### 字符输入流(将数据存入内存):Reader
+
+```
+// 一次读取一个字符的操作
+//1.创建对象并关联文件
+FileReader fileReader = new FileReader("temp2.txt");
+
+//2.读操作
+/*
+ * read():一个字符一个字符的读
+ * read(数组):一次可以读多个字符,将读到的多个字符会临时存储到数组中.
+ */
+//read():一个字符一个字符的读
+//a:将当前的字符读出   b:将当前的指针后移一个字符
+int num = 0;
+while ((num = fileReader.read()) != -1) {
+	System.out.println((char)num);
+}
+
+//关流
+fileReader.close();
+```
+```
+//一次读取一个数组长度的字符
+//1.创建对象并关联文件
+FileReader fileReader = new FileReader("temp2.txt");
+
+//2.一次读多个字符: read(数组)
+/*
+ * 数组是临时存放数据的地方,我们会将读到的字符放到临时数组中,数组的大小决定了我们一次可以读到的字符个数.
+ * 一般这个数组的大小<=1kb
+ * 返回值代表本次读到的真实的字符个数,如果返回值是-1代表读完了.
+ */
+char[] arr = new char[2];
+int num = 0;
+while ((num =  fileReader.read(arr)) != -1) {
+	System.out.println(new String(arr,0,num)+"   num:"+num);
+}
+
+//3.关闭流
+fileReader.close();
+```
+
+
+### 字符输出流(将数据从内存中取出):Writer
+
+```
+//1.创建FileWriter类的对象并关联文件
+/*
+ * 注意点:一:关联文件的特点:如果之前不存在,程序会自动创建一个,如果存在会直接使用,但是会将文件之前的内容覆盖掉
+ * 注意点:二:如果只写文件的名字,不写具体的路径,默认路径就是当前的工程.
+ * 注意点:三:我们可以自己指定路径,但是一定要保证路径存在.否则报异常:FileNotFoundException: Q:\temp1.txt (系统找不到指定的路径。)
+ */
+FileWriter fileWriter = new FileWriter("temp1.txt");//当后面加上参数true时,支持续写
+
+//2.调用写入方法
+//注意点四:在执行write方法时,数据被临时放到了流对象的内部数组中,这个数组是一个字节数组,会默认去查编码表
+fileWriter.write("bingbingbang");
+
+//3.刷新--将临时数组的内容写入磁盘
+//fileWriter.flush();
+
+//4.关闭流--两个功能:a:关闭流  b:刷新
+//第五个注意点:流对象使用完后必须关闭
+fileWriter.close();
+
+//第六个注意点:当流对象关闭之后,不能再进行操作,否则会报异常:Stream closed
+fileWriter.write("haha");
+```
+
+### 字符缓冲流:(字符缓冲流)
+
+> 定义:为了提高读写的能力,本身没有读写的能力,要想进行读写,就必须借助于字符流实现.
+
+可以将缓冲流类比于催化剂或者高速的小车
+
+- 字符缓冲流分类:
+1. 字符缓冲读入流:BufferedReader     没有读的能力
+2. 字符缓冲写入流:BufferedWriter      没有写的能力
+```
+/*
+ * 字符缓冲流:(字符缓冲区)
+ * 定义:为了提高读写的能力,本身没有读写的能力,要想进行读写就必须借助于字符流实现.
+ * 
+ * 可以将缓冲流类比于催化剂或者高速的小车
+ * 
+ * 字符缓冲流分类:
+ * 字符缓冲读入流:BufferedReader   没有读的能力
+ * 字符缓冲写出流:BufferedWriter   没有写的能力
+ */
+
+//创建字符写出流
+FileWriter fileWriter = new FileWriter("temp4.txt");
+
+//使用字符缓冲流实现写出
+BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
+
+//写的操作
+bufferedWriter.write("bingbing");
+//bufferedWriter.write("\r\n");//window下的换行
+bufferedWriter.newLine();//换行,可以实现跨平台
+bufferedWriter.write("chenchen");
+
+//关闭缓冲流---1.关闭内部的写出流  2.刷新   3.将自己关闭
+bufferedWriter.close();
+
+//字符读入流同理
+```
+### LineNumberReader
+
+> LineNumberReader:是BufferedReader的子类,不能读.但是可以提高效率,特有功能:设置行号,获取行号
+
+```
+//1.创建缓冲流
+LineNumberReader lineNumberReader = new LineNumberReader(new FileReader("temp5.txt"));
+
+//设置行号:默认从0开始设置,从1开始计数
+lineNumberReader.setLineNumber(10);
+
+String data = null;
+while ((data = lineNumberReader.readLine()) != null) {
+	System.out.print(lineNumberReader.getLineNumber());//获取行号
+	System.out.print(data);
+	System.out.println();
+}
+
+//关闭流
+lineNumberReader.close();
+```
+
+# 相对路径
+> 从路径的中间某个部位开始一直到当前的文件
+
+# 绝对路径
+> 一个文件的完整路径,从根目录开始到当前的文件
+
+# 装饰设计模式
+
+装饰设计模式:基于已经实现的功能,提供增强的功能.
+ 
+装饰设计模式的由来就来自于对缓冲流的实现.
+
+```
+/*
+ * 模拟字符缓冲读入流:BufferedReader
+ * 分析:
+ * 1.要属于流的体系
+ * 2.要有一个Reader类型的成员变量
+ * 3.要有一个带参数的构造方法接收外部传入的流对象
+ * 4.模拟readLine(),实现读一行的功能
+ * 5.关闭流
+ */
+public class Demo11 {
+	public static void main(String[] args) throws IOException {
+		MyBufferedReader myBufferedReader = new MyBufferedReader(new FileReader("temp5.txt"));
+		
+		String data = null;
+		while ((data = myBufferedReader.myReadLine()) != null) {
+			System.out.print(data);
+			System.out.println();
+		}
+		
+		myBufferedReader.close();
+	}
+}
+
+class MyBufferedReader extends Reader{//1.要属于流的体系
+	//2.要有一个Reader类型的成员变量
+	FileReader reader;
+	//3.要有一个带参数的构造方法接收外部传入的流对象
+	public MyBufferedReader(FileReader reader) {
+		this.reader = reader;
+	}
+	
+	//4.模拟readLine(),实现读一行的功能
+	/*
+	 * 分析:要有返回值:String
+	 * 不需要参数
+	 * 
+	 */
+	public String myReadLine() throws IOException {
+		//a:要准备一个临时的可变字符串,存储当前行的数据
+		StringBuffer buffer = new StringBuffer();
+		//b:开始使用reader的read()方法去读取字符
+		int num = 0;
+		while ((num = reader.read()) != -1) {
+			if (num == '\r') {
+				continue;
+			}else if (num == '\n') {
+				return buffer.toString();
+			}else {
+				buffer.append((char)num);
+			}
+		}
+		
+		//1.当文本没有内容的时候的处理
+		if (buffer.length() == 0) {
+			return null;
+		}
+		
+		//2.当文本只有一行,没有使用换行符
+		return buffer.toString();
+		
+		//这里有提高效率的功能.
+	}
+	
+	@Override
+	public int read(char[] cbuf, int off, int len) throws IOException {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	//5.关闭流
+	public void close() throws IOException {
+		//将流对象关闭
+		this.reader.close();
+		//将自己关闭
+		
+	}
+	
+}
+
+/*
+ * 装饰设计模式:基于已经实现的功能,提供增强的功能.
+ * 装饰设计模式的由来就来自于对缓冲流的实现.
+ * 
+ * 特点:从缓冲流的角度讲解
+ * 1.使流原来的继承体更加的简单
+ * 2.提高了效率
+ * 3.由于是在原有的基础上提高增强的功能,所以他还要属于原来的体系
+ * 
+ * 演示:如果自己设计装饰设计模式,怎么处理?
+ * 1.原来的类  Test
+ * 2.装饰类   BTest
+ * 
+ * 
+ * 步骤:
+ * 1.让BTest 继承自Test
+ * 2.在BTest内有一个Test类型的成员变量
+ * 3.通过BTest内一个带参数的构造方法接收外部传入的一个Test类型的对象,交给内部的Test的属性
+ * 4.在实现功能的时候,调用传入的Test类型的对象实现原有的功能,自己实现增强的功能.
+ * 
+  * 适配器设计模式:通常可以变相的理解成装饰设计模式
+ * 实例:要求在子类中只使用play方法
+ * 
+ * 分析:Dog是继承了ZiMidel类,ZiMidel类实现了Inter接口
+ * 当Dog类想要实现Inter接口的一个方法的时候,如果直接实现Inter接口,就必须将所有的方法都实现,
+ * 如果在Dog类与Inter接口之间插入一个类,让这个类去实现Inter接口的所有方法,作为这个类的子类只需要实现自己需要的方法
+ * 
+ * 我们将中间的这个类就可以成为适配器类
+ * 
+ */
+
+
+interface Inter{
+	public void play();
+	public void song();
+	public void run();
+	public void eat();
+	public void jump();
+}
+//适配器类
+class ZiMidel implements Inter{
+
+	@Override
+	public void play() {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void song() {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void run() {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void eat() {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void jump() {
+		// TODO Auto-generated method stub
+		
+	}
+	
+}
+
+
+//创建狗类,我只想让她实现play方法?
+class Dog extends ZiMidel{
+	public void play() {
+		// TODO Auto-generated method stub
+		
+	}
+}
+
+class Cat extends ZiMidel{
+	public void song() {
+		
+	}
+}
+```
