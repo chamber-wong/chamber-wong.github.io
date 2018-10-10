@@ -1,0 +1,869 @@
+---
+layout:     post
+title:      "Hadoop的安装"
+subtitle:   "hadoop生态圈的简介,和hadoop的三种安装方式"
+date:       2018-09-08 12:00:00
+author:     "Chamber"
+header-img: "img/post-bg-2015.jpg"
+catalog: true
+tags:
+    - hadoop
+    - hadoop安装
+---
+<!-- MarkdownTOC -->
+
+- 一.hadoop生态圈
+    - 1.hadoop生态圈的重要组件
+    - 2.数据处理流程
+- 二.hadoop的安装
+    - 1. 伪分布式环境搭建
+        - HADOOP集群规划
+        - 1.2 HADOOP集群安装步骤
+    - 2.集群环境搭建
+        - 2.1 HADOOP集群规划
+        - 2.2 HADOOP集群安装步骤
+        - 2.3 小案例演示
+            - 1. 格式化HDFS    因为HDFS也是文件系统，第一次使用一个文件系统都要格式化
+            - 2.方法一: 启动hdfs集群（注意启动集群时，最好将集群中所有机器的时间设置一致）
+            - 2. 方法二: 启动dfs集群
+            - 3.方法一: 启动yarn集群
+            - 3. 方法二:开启yarn集群
+            - 4. 使用web查看集群的状态
+    - 3. 停止hadoop
+
+<!-- /MarkdownTOC -->
+
+# 一.hadoop生态圈
+
+## 1.hadoop生态圈的重要组件
+
+- **HDFS**：分布式文件系统
+- **MAPREDUCE**：分布式运算程序开发框架
+- **Flume**：日志数据采集框架(就像一个水泵,将水从一个水源,抽取到另一个水坑中.)当然flume抽取的是数据.将数据从数据源抽取到目的地.
+- **HIVE**：本质上就是MapReduce,接收用户输入的sql,然后将该sql语句翻译成MapReduce程序,并将MapReduce程序发布到MapReduce集群中进行运算,最终生成有用信息.-----基于大数据技术（文件系统+运算框架）的SQL数据仓库工具
+- **Sqoop**：数据导入导出工具(将hdfs中文件导出到mysql/Oracle的表中)
+- **HBASE**：基于HADOOP的分布式海量数据库(基于hdfs文件系统的数据库产品)
+
+- **ZOOKEEPER**：分布式协调服务基础组件
+- **Mahout**：基于mapreduce/spark/flink等分布式运算框架的机器学习算法库
+- **Oozie/ackaban**：工作流调度框架(一个完整的业务/作业(work)是由多个任务(task)相互配合来完成,改组件用来就是负责协调各个task的执行顺序)
+
+
+
+## 2.数据处理流程
+
+![image](https://img-blog.csdn.net/20170429113223599)
+
+1) 数据采集：定制开发采集程序，或使用开源框架FLUME
+
+2) 数据预处理：定制开发mapreduce程序运行于hadoop集群
+
+3) 数据仓库技术：基于hadoop之上的Hive
+
+4) 数据导出：基于hadoop的sqoop数据导入导出工具
+
+5) 数据可视化：定制开发web程序或使用kettle等产品
+
+6) 整个过程的流程调度：hadoop生态圈中的oozie工具或其他类似开源产品
+
+# 二.hadoop的安装
+
+hadoop安装的基本要求:
+
+1. ip互通
+2. 主机名ip映射成功
+3. hadoop用户拥有sudo权限
+4. 防火墙能通
+5. ssh免密登录
+6. jdk
+
+## 1. 伪分布式环境搭建
+
+> 1.1伪分布式就是在一台机器上实现hadoop环境的搭建,无实际生产作用
+
+###  HADOOP集群规划
+
+| 主机名（hostname） | 安装软件     | 运行进程                                                     |
+| ------------------ | ------------ | ------------------------------------------------------------ |
+| pdm                | hadoop-2.7.1 | nameNode、resourceManager、datanode、nodemanager、secondary namenode |
+
+### 1.2 HADOOP集群安装步骤
+
+下面步骤以**root**用户登陆系统，来进行设置。
+
+1.设置静态ip
+
+```shell
+Vi /etc/sysconfig/network-scripts/ifcfg-eth0  
+
+#设置内容如下
+DEVICE=eth0
+HWADDR=00:0C:29:82:D8:3B
+TYPE=Ethernet
+UUID=c0d48cdb-2e8f-45ab-8c2a-50526629fefc
+ONBOOT=yes
+NM_CONTROLLED=yes
+BOOTPROTO=static            #开启静态ip设置
+DNS1=192.168.18.2           #域名服务器  根据你自己网络情况配置
+IPADDR=192.168.18.100        #ip地址   据你自己网络情况配置
+NETMASK=255.255.255.0       #子网掩码  据你自己网络情况配置
+GATEWAY=192.168.18.2        #网关   据你自己网络情况配置
+
+
+```
+
+
+
+2.修改主机名
+
+```shell
+vim /etc/sysconfig/network
+#内容如下
+NETWORKING=yes
+HOSTNAME=pdm    #自定义的主机名 
+
+#重启机器
+reboot
+```
+
+
+
+3.修改主机名和IP的映射关系
+
+```shell
+vim /etc/hosts
+#内容如下
+    192.168.1.100 pdm 
+
+```
+
+
+
+4.创建一个名为hadoop的用户
+
+```shell
+useradd hadoop #添加hadoop用户
+
+passwd hadoop #给hadoop用户 设置密码 密码是开机密码
+```
+
+
+
+5.为hadoop用户配置sudo权限
+
+非root用户要执行系统管理员（root）的权限命令时，使用sudo放到“要执行的系统命令”之前。但是使用sudo之前，要进行一些配置：
+
+```shell
+#为/etc/sudoers文件增加一个写权限
+chmod u+w /etc/sudoers  
+#编辑 /etc/sudoers文件
+vi /etc/sudoers
+
+#在文件中的如下位置，为普通用户（如hadoop）添加一行即可
+    root ALL=(ALL) ALL 
+    hadoop ALL=(ALL) ALL
+```
+
+
+
+6.关闭防火墙
+
+```shell
+#查看防火墙状态    centos7版本的linux系统中防火墙软件名  firewall 不是iptables了
+service iptables status
+
+#关闭防火墙
+service iptables stop
+
+#查看防火墙开机启动状态
+chkconfig iptables --list
+
+#关闭防火墙开机启动
+chkconfig iptables off
+#重启计算机
+reboot
+```
+
+
+
+7.如果机器中没有ssh软件，需要安装此软件
+
+```shell
+yum list | grep openssh-clients #使用yum来查找出ssh软件包的全名称
+
+#会输出“ openssh-clients.x86_64 5.3p1-122.el6 base”信息
+
+yum install openssh-clients.x86_64 #安装
+```
+
+从下面步骤开始使用名hadoop的用户来进行配置
+
+```shell
+su hadoop  #切换用户
+```
+
+
+
+8.使用mobaxteam连接虚拟机
+
+9.安装vim
+
+```shell
+yum install vim-enhanced.i686
+```
+
+
+
+10.安装JDK
+
+```shell
+#（1）解压jdk
+
+#创建文件夹
+mkdir /home/hadoop/develop_env
+
+#解压
+tar  -zxvf  jdk-7u55-linux-i586.tar.gz  -C  /home/hadoop/develop_env
+
+#（2）将java添加到环境变量中
+
+vim /etc/profile
+
+#在文件最后添加
+export JAVA_HOME=/home/hadoop/develop_env/jdk1.7.0_65
+export PATH=$PATH:$JAVA_HOME/bin
+
+#刷新配置
+source /etc/profile
+
+```
+
+
+
+11.安装hadoop-2.7.1
+
+​   先上传hadoop的安装包到服务器上去/home/hadoop/
+
+（1）安装：
+
+```shell
+tar  -zvxf  hadoop-2.7.1.tar.gz -C  /home/hadoop/develop_env/
+```
+
+ 
+
+（2）配置hadoop
+
+伪分布式需要修改5个配置文件：
+
+第一个：$HADOOP_HOME/etc/hadoop/hadoop-env.sh
+(设置环境变量)
+
+```shell
+vim hadoop-env.sh
+
+#在差不多第27行设置jdk的java_home
+    export JAVA_HOME=/home/hadoop/app//jdk1.7.0_65
+
+```
+
+
+
+第二个：修改$HADOOP_HOME/etc/hadoop/core-site.xml文件，添加如下内容(注意pdm是主机名)
+
+```shell
+#1.编辑 core-site.xml文件
+vi $HADOOP_HOME/etc/hadoop/core-site.xml
+#内容如下：
+    <!-- 指定HADOOP所使用的文件系统schema（URI），HDFS的老大（NameNode）的地址 -->
+    <property>
+        <name>fs.defaultFS</name>
+        <!-- 指定了客户端访问的主机名“pdm”，则该主机的hadoop就是namenode节点了-->
+        <value>hdfs://pdm:9000</value>
+    </property>
+
+    <!-- 指定hadoop运行时产生文件的存储目录 -->
+    <property>
+        <name>hadoop.tmp.dir</name>
+        <value>/home/hadoop/app/hadoop-2.7.1/data</value>
+    </property>
+
+#2.在$HADOOP_HOME/下创建一个data文件夹
+mkdir  data
+```
+
+
+
+第三个：设置$HADOOP_HOME/etc/hadoop/hdfs-site.xml 文件，添加如下内容
+
+```shell
+vi $HADOOP_HOME/etc/hadoop/hdfs-site.xml 
+
+#添加如下内容
+<!-- 指定HDFS副本的数量 -->
+<property>
+    <name>dfs.replication</name>
+    <value>1</value>
+</property>
+
+```
+
+
+
+第四个：设置$HADOOP_HOME/etc/hadoop/mapredd-site.xml 文件，添加如下内容
+
+```shell
+#1. 修改文件名
+mv $HADOOP_HOME/etc/hadoop/mapred-site.xml.template   $HADOOP_HOME/etc/hadoop/mapred-site.xml
+#2. 编辑mapred-site.xml文件
+vim  $HADOOP_HOME/etc/hadoop/mapred-site.xml
+
+#添加如下内容
+<!-- 指定mr运行在yarn上 -->
+<property>
+    <name>mapreduce.framework.name</name>
+    <value>yarn</value>
+</property>
+
+```
+
+
+
+第五个：设置$HADOOP_HOME/etc/hadoop/yarn-site.xml文件，添加如下内容(注意pdm是主机名)
+
+```shell
+#编辑/yarn-site.xml
+vi $HADOOP_HOME/etc/hadoop/yarn-site.xml
+
+#添加如下内容
+<!-- 指定YARN的老大（ResourceManager）的地址 -->
+<property>
+    <name>yarn.resourcemanager.hostname</name>
+    <value>pdm</value>
+</property>
+
+<!-- reducer获取数据的方式 -->
+<property>
+    <name>yarn.nodemanager.aux-services</name>
+    <value>mapreduce_shuffle</value>
+</property>
+
+```
+
+（3）将hadoop-2.7.1添加到path变量
+
+```shell
+vim /etc/proflie
+
+export JAVA_HOME=/home/hadoop/app/jdk1.7.0_65
+export HADOOP_HOME=/home/hadoop/app/hadoop-2.7.1
+export PATH=$PATH:$JAVA_HOME/bin:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
+
+source /etc/profile
+```
+
+以上配置步骤执行完毕
+
+
+
+（4）格式化namenode
+
+```shell
+hadoop namenode  -format
+
+#此命令的作用：（是对namenode所在机器的home/hadoop/app/hadoop-2.7.1/data目录下创建相关文件）
+
+#而datanaode所在机器的home/hadoop/app/hadoop-2.7.1/data目录下的相关文件的创建是在datanode启动的时候才创建的。
+
+```
+
+
+
+（5）启动hadoop
+
+（5.1）先启动HDFS  （默认hadoop_home目录下没有 log目录，第一次执行此命令时才第一次创建）
+
+```shell
+start-dfs.sh
+```
+
+
+
+通过shell脚本（start-dfs.sh）启动的HDFS服务由三个“守护进程”组成，通过jps和ps -x命令能看到这些进程 。
+
+这三个进程分别是：（NameNode）、（secondaryNameNode）、（Datanode）
+
+
+
+（5.2）再启动YARN
+
+```shell
+start-yarn.sh
+```
+
+
+
+（6）验证是否启动成功
+
+```shell
+#使用jps命令验证
+jps
+#显示如下进程信息
+    27408 NameNode
+    28218 Jps
+    27643 SecondaryNameNode
+    28066 NodeManager
+    27803 ResourceManager
+    27512 DataNode
+
+```
+
+
+
+<http://192.168.18.100:50070> （HDFS管理界面） 通过浏览器可以访问
+
+<http://192.168.18.100:8088> （YARN管理界面）通过浏览器可以访问
+
+12.配置ssh免登陆
+
+```shell
+#（配置自己到自己的免密登陆，因为集群中namenode那台机器要实现到另一台datanode机器的免密登陆
+
+#而本机配置hadoop环境是伪分布式环境，namenode和datanode在同一机器中，因此要配 “自己到自己的免密登陆”）
+
+#生成ssh免登陆密钥
+
+#进入到我的home目录
+
+#（1）在/home/hadoop目录下执行下面命令，生成密钥对
+
+    ssh-keygen -t rsa （四个回车）
+
+#执行完这个命令后，会生成两个文件id_rsa（私钥）、id_rsa.pub（公钥）
+#执行完此命令后，在/home/hadoop/.ssh目录生成id_rsa和id_rsa.pub
+#前者是私钥，后者是公钥
+
+#（2) 将公钥拷贝到要免登陆的机器上
+#在/home/hadoop/.ssh目录执行如下命令
+    ssh-copy-id localhost
+```
+
+//=================上面是部署了一个伪分布式hadoop集群，就一台机器===============
+
+## 2.集群环境搭建
+
+### 2.1 HADOOP集群规划
+
+| 主机名（hostname） | 安装软件     | 运行进程                  |
+| ------------------ | ------------ | ------------------------- |
+| min1               | hadoop-2.7.1 | nameNode、resourceManager |
+| min2               | hadoop-2.7.1 | dataNode、nodeManager     |
+| min3               | hadoop-2.7.1 | dataNode、nodeManager     |
+
+### 2.2 HADOOP集群安装步骤
+
+1. 准备三台Centos6.7 64bit虚拟机，虚拟机名分别为：
+
+- Centos6.7_min1
+- Centos6.7_min2
+- Centos6.7_min3
+
+ ***注意  三台机器使用root用户登陆系统***
+
+2. 分别修改虚拟机的主机名（hostname）
+
+- 在Centos6.7_min1机器中执行修改hostname命令
+
+ ```shell
+ vi   etc/sysconfig/network     #编辑network文件
+ ```
+
+
+- 在Centos6.7_min2机器中执行修改hostname命令
+
+ ```shell
+ vi   etc/sysconfig/network     #编辑network文件
+ ```
+
+
+- 在Centos6.7_min3机器中执行修改hostname命令
+
+ ```shell
+ vi   etc/sysconfig/network     #编辑network文件
+ ```
+
+
+- 分别重启机器
+
+3. 分别配置三台机器的静态ip
+
+   - 规划三台机器的静态ip地址
+
+     | Centos6.7_min1 | 192.168.18.64 |
+     | -------------- | ------------- |
+     | Centos6.7_min2 | 192.168.18.65 |
+     | Centos6.7_min3 | 192.168.18.66 |
+
+   - 以centos6.7_min1为例配置静态ip地址，其他机器配置步骤一致
+
+ ```shell
+ vi /etc/sysconfig/network-scripts/ifcfg-eth0   #编辑ifcfg-eth0文件
+ ```
+
+内容如下:
+
+ ```shell
+    DEVICE=eth0
+    TYPE=Ethernet
+    UUID=5300b89f-d97d-4d44-b296-b7f7a0fb4726
+    ONBOOT=yes
+    NM_CONTROLLED=yes
+    BOOTPROTO=static
+    HWADDR=00:0C:29:F7:87:2D
+    IPADDR=192.168.99.101
+    NETMASK=255.255.255.0
+    GATEWAY=192.168.99.2
+    DNS1=8.8.8.8
+ ```
+
+ **（注意：此IPADDR、DNS1、GATEWAY具体的值要跟你自己的虚拟机NAT网络的值相匹配 ）**
+
+   - 分别重启机器
+
+4. 分别修改三台机器hosts
+
+```shell
+vi /etc/hosts   #在每台机器的hosts文件添加ip与hostname的映射
+```
+
+5. 分别为每台机器创建一个名为“hadoop”的用户
+
+```shell
+useradd hadoop  #添加hadoop用户
+passwd  hadoop  #给hadoop用户 设置密码 
+```
+
+6. 分别为每台机器的“hadoop”用户配置sudo权限
+
+```shell
+chmod  u+w /etc/sudoers   #为sudoers文件添加一个“可以写入”的权限
+vi /etc/sudoers    #用root用户编辑sudoers文件
+```
+
+
+7. 关闭每台机器的防火墙
+
+```shell
+service iptables stop       #关闭防火墙
+chkconfig iptables off      #关闭防火墙开机启动
+```
+
+
+8. 安装 jdk-7u55-linux-i586.tar.gz 
+
+```shell
+#（1）解压jdk
+
+#创建文件夹
+mkdir /home/hadoop/develop_env
+
+#解压
+tar  -zxvf  jdk-7u55-linux-i586.tar.gz  -C  /home/hadoop/develop_env
+
+#（2）将java添加到环境变量中
+
+vim /etc/profile
+
+#在文件最后添加
+export JAVA_HOME=/home/hadoop/develop_env/jdk1.7.0_65
+export PATH=$PATH:$JAVA_HOME/bin
+
+#刷新配置
+source /etc/profile
+```
+
+   
+
+9. 三台机器分别切换为hadoop用户并创建一个名为develop_env的文件夹
+
+```shell
+su - hadoop     #切换到hadoop用户
+mkdir develop_env      #在hadoop的家目录下创建一个develop_env文件
+```
+
+
+
+*下面的步骤都是以**hadoop**用户来完成*
+
+   
+
+10. 上传hadoop-2.7.1.tar.gz到Centos6.7_min1机器的/home/hadoop/develop_env目录下
+
+11. 解压hadoop-2.7.1.tar.gz安装包  
+
+```shell
+cd /home/hadoop/develop_env     #切换到/home/hadoop/develop_env目录
+tar -zxvf  hadoop-2.7.1.tar.gz  -C  /home/hadoop/develop_env    #解压
+```
+
+12. 设置hadoop-env.sh配置文件
+
+```shell
+cd   /home/hadoop/develop_env/hadoop-2.7.1/etc/hadoop  #切换目录
+vi   hadoop-env.sh  #添加如下内容
+```
+
+```
+#在差不多第27行设置jdk的java_home
+export JAVA_HOME=/home/hadoop/app//jdk1.7.0_65
+
+```
+
+13. 设置core-site.xml配置文件
+
+```shell
+mkdir  /home/hadoop/develop_env/hadoop-2.7.1/data   #创建一个名为的文件夹
+vi core-site.xml   #添加如下内容
+```
+```
+<configuration>
+<!-- 指定HADOOP所使用的文件系统schema（URI），HDFS的老大（NameNode）的地址 -->
+    <property>
+        <name>fs.defaultFS</name>
+        <!-- 指定了客户端访问的主机名“pdm”，则该主机的hadoop就是namenode节点了-->
+        <value>hdfs://min1:9000</value>
+    </property>
+
+    <!-- 指定hadoop运行时产生文件的存储目录 -->
+    <property>
+        <name>hadoop.tmp.dir</name>
+        <value>/home/hadoop/app/hadoop-2.7.1/data</value>
+    </property>
+</configuration>
+```
+
+14. 设置hdfs-site.xml配置文件（该文件默认即可，今天就不用配置此文件了）
+
+```shell
+vi hdfs-site.xml  #添加如下内容
+```
+```
+<configuration>
+    <!-- 指定HDFS副本的数量 -->
+    <property>
+        <name>dfs.replication</name>
+        <value>2</value>
+    </property>
+</configuration>
+```
+
+15. 设置mapred-site.xml配置文件
+
+```shell
+mv  mapred-site.xml.template   mapred-site.xml  #默认mapred-site.xml不存在，使用
+                                            #mapred-site.xml.template生成
+vi  mapred-site.xml  #添加如下内容
+```
+
+```
+<configuration>
+    <!-- 指定mr运行在yarn上 -->
+    <property>
+        <name>mapreduce.framework.name</name>
+        <value>yarn</value>
+    </property>
+</configuration>
+```
+16. 设置yarn-site.xml配置文件
+
+```shell
+vi   yarn-site.xml   #添加如下内容
+```
+
+```
+<configuration>
+    <!-- 指定YARN的老大（ResourceManager）的地址 -->
+    <property>
+        <name>yarn.resourcemanager.hostname</name>
+        <value>192.168.99.101</value>
+    </property>
+    
+    <!-- reducer获取数据的方式 -->
+    <property>
+        <name>yarn.nodemanager.aux-services</name>
+        <value>mapreduce_shuffle</value>
+    </property>
+</configuration>
+```
+17. 设置slaves配置文件
+
+```shell
+vi  slaves    #修改后显示如下内容
+```
+```
+min2
+min3
+```
+
+18. 配置Centos6.7_min1到Centos6.7_min2、Centos6.7_min3的免密登陆
+
+> 详情见linux学习中的ssh免密登录
+
+19. 将develop_env目录下的所有文件分别拷贝到Centos6.7_min2、Centos6.7_min3
+
+```shell
+cd ~/develop_env        #切换到/home/hadoop/develop_env目录下
+scp -r /home/hadoop/develop_env/hadoop-2.7.1  min2:/home/hadoop/
+scp -r /home/hadoop/develop_env/hadoop-2.7.1  min3:/home/hadoop
+```
+
+20. 分别在三台机器上将hadoop添加到环境变量
+
+```shell
+（1）vim  /etc/proflie
+（2）source  /etc/profile
+（3）分别重启三台机器
+```
+
+```
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.181-3.b13.el6_10.x86_64
+export HADOOP_HOME=/home/hadoop/develop_env/hadoop-2.7.1
+export PATH=$PATH:$JAVA_HOME/bin:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
+```
+
+
+
+### 2.3 小案例演示
+
+- [ ] 启动集群
+
+#### 1. 格式化HDFS    因为HDFS也是文件系统，第一次使用一个文件系统都要格式化
+
+ ```shell
+ hadoop  namenode  -format      #在min1机器上执行格式化命令
+ ```
+显示successfully为成功
+#### 2.方法一: 启动hdfs集群（注意启动集群时，最好将集群中所有机器的时间设置一致）
+
+ ```shell
+ start-dfs.sh    #在min1机器上执行启动hdfs集群命令
+ #注意启动集群时，最好将集群中所有机器的时间设置一致
+ date -s 'yyyy-mm-dd HH:MM:SS'
+ ```
+
+ 在min1启动namenode成功显示:
+
+```shell
+[hadoop@hadoop1 ~]$ start-dfs.sh
+18/09/08 04:26:29 WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+Starting namenodes on [hadoop1]
+hadoop1: starting namenode, logging to /home/hadoop/develop_env/hadoop-2.7.1/logs/hadoop-hadoop-namenode-hadoop1.out
+hadoop2: starting datanode, logging to /home/hadoop/develop_env/hadoop-2.7.1/logs/hadoop-hadoop-datanode-hadoop2.out
+hadoop3: starting datanode, logging to /home/hadoop/develop_env/hadoop-2.7.1/logs/hadoop-hadoop-datanode-hadoop3.out
+Starting secondary namenodes [0.0.0.0]
+0.0.0.0: starting secondarynamenode, logging to /home/hadoop/develop_env/hadoop-2.7.1/logs/hadoop-hadoop-secondarynamenode-hadoop1.out
+18/09/08 04:26:52 WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+
+```
+
+在min2和min3启动datanode成功显示：
+
+
+```
+[hadoop@hadoop2 ~]$ jps
+1952 DataNode
+2026 Jps
+
+```
+#### 2. 方法二: 启动dfs集群
+
+1. 启动NameNode 
+```
+[hadoop@bigdata-senior01 hadoop-2.5.0]$ ${HADOOP_HOME}/sbin/hadoop-daemon.sh start namenode
+starting namenode, logging to /opt/modules/hadoop-2.5.0/logs/hadoop-hadoop-namenode-bigdata-senior01.chybinmy.com.out
+```
+2. 启动DataNode
+```
+启动DataNode
+
+[hadoop@bigdata-senior01 hadoop-2.5.0]$ ${HADOOP_HOME}/sbin/hadoop-daemon.sh start datanode
+starting datanode, logging to /opt/modules/hadoop-2.5.0/logs/hadoop-hadoop-datanode-bigdata-senior01.chybinmy.com.out
+```
+3. 启动SecondaryNameNode
+```
+[hadoop@bigdata-senior01 hadoop-2.5.0]$ ${HADOOP_HOME}/sbin/hadoop-daemon.sh start secondarynamenode
+starting secondarynamenode, logging to /opt/modules/hadoop-2.5.0/logs/hadoop-hadoop-secondarynamenode-bigdata-senior01.chybinmy.com.out
+```
+4. JPS命令查看是否已经启动成功，有结果就是启动成功了。
+```
+[hadoop@bigdata-senior01 hadoop-2.5.0]$ jps
+3034 NameNode
+3233 Jps
+3193 SecondaryNameNode
+3110 DataNode
+```
+
+#### 3.方法一: 启动yarn集群 
+
+ ```shell
+ start-yarn.sh       #在min1机器上执行启动yarn集群命令  
+ ```
+
+ 在min1启动resourcemanager成功显示:
+
+ ```
+ [hadoop@hadoop1 ~]$ start-yarn.sh
+starting yarn daemons
+starting resourcemanager, logging to /home/hadoop/develop_env/hadoop-2.7.1/logs/yarn-hadoop-resourcemanager-hadoop1.out
+hadoop2: nodemanager running as process 1993. Stop it first.
+hadoop3: nodemanager running as process 1991. Stop it first.
+
+ ```
+
+ 在min2和min3启动nodemanager成功显示：
+
+#### 3. 方法二:开启yarn集群
+
+1. 启动Resourcemanager
+
+```
+[hadoop@bigdata-senior01 hadoop-2.5.0]$ ${HADOOP_HOME}/sbin/yarn-daemon.sh start resourcemanager
+```
+
+2. 启动nodemanager
+
+```
+[hadoop@bigdata-senior01 hadoop-2.5.0]$ ${HADOOP_HOME}/sbin/yarn-daemon.sh start nodemanager
+```
+
+3. 查看是否启动成功
+```
+[hadoop@bigdata-senior01 hadoop-2.5.0]$ jps
+3034 NameNode
+4439 NodeManager
+4197 ResourceManager
+4543 Jps
+3193 SecondaryNameNode
+3110 DataNode
+```
+
+可以看到ResourceManager、NodeManager已经启动成功了。
+
+#### 4. 使用web查看集群的状态
+
+ 使用浏览器打开 http://192.168.18.11:8088/
+
+## 3. 停止hadoop
+
+```
+[hadoop@bigdata-senior01 hadoop-2.5.0]$ sbin/hadoop-daemon.sh stop namenode
+stopping namenode
+[hadoop@bigdata-senior01 hadoop-2.5.0]$ sbin/hadoop-daemon.sh stop datanode
+stopping datanode
+[hadoop@bigdata-senior01 hadoop-2.5.0]$ sbin/yarn-daemon.sh stop resourcemanager
+stopping resourcemanager
+[hadoop@bigdata-senior01 hadoop-2.5.0]$ sbin/yarn-daemon.sh stop nodemanager
+stopping nodemanager
+
+
+```

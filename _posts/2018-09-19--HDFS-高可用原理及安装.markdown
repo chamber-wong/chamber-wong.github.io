@@ -1,0 +1,361 @@
+---
+layout:     post
+title:      "HDFS-高可用原理和HA安装详解"
+subtitle:   ""
+date:       2018-09-19 12:00:00
+author:     "Chamber"
+header-img: "img/post-bg-2015.jpg"
+catalog: true
+tags:
+    - hadoop
+    - HDFS
+    - HA高可用
+---
+<!-- MarkdownTOC -->
+
+- 一、产生背景
+- 二、名词解释
+- 三、工作流程
+  - NameNode 的主备切换实现
+  - NameNode 的共享存储实现
+    - 背景
+    - NameNode 的元数据存储概述
+    - JournalNode 分析
+- 四、安装教程
+  - 1. 配置文件
+    - core-site.xml文件
+    - hdfs-site.xml文件
+  - 2. 启动教程
+  - 3. 在已经运行hadoop的集群上安装高可用
+  - HA检测
+  - 主备切换常用命令
+
+<!-- /MarkdownTOC -->
+
+# 一、产生背景
+
+在 Hadoop 1.0 时代，Hadoop 的两大核心组件 HDFS NameNode 和 JobTracker 都存在着单点问题，这其中以 NameNode 的单点问题尤为严重。因为 NameNode 保存了整个 HDFS 的元数据信息，一旦 NameNode 挂掉，整个 HDFS 就无法访问，同时 Hadoop 生态系统中依赖于 HDFS 的各个组件，包括 MapReduce、Hive、Pig 以及 HBase 等也都无法正常工作，并且重新启动 NameNode 和进行数据恢复的过程也会比较耗时。这些问题在给 Hadoop 的使用者带来困扰的同时，也极大地限制了 Hadoop 的使用场景，使得 Hadoop 在很长的时间内仅能用作离线存储和离线计算，无法应用到对可用性和数据一致性要求很高的在线应用场景中。
+
+所幸的是，在 Hadoop2.0 中，HDFS NameNode 和 YARN ResourceManger(JobTracker 在 2.0 中已经被整合到 YARN ResourceManger 之中) 的单点问题都得到了解决，经过多个版本的迭代和发展，目前已经能用于生产环境。HDFS NameNode 和 YARN ResourceManger 的高可用 (High Availability，HA) 方案基本类似，两者也复用了部分代码，但是由于 HDFS NameNode 对于数据存储和数据一致性的要求比 YARN ResourceManger 高得多，所以 HDFS NameNode 的高可用实现更为复杂一些，
+
+# 二、名词解释
+
+Active NameNode 和 Standby NameNode：两台 NameNode 形成互备，一台处于 Active 状态，为主 NameNode，另外一台处于 Standby 状态，为备 NameNode，只有主 NameNode 才能对外提供读写服务。
+
+主备切换控制器 ZKFailoverController：ZKFailoverController 作为独立的进程运行，对 NameNode 的主备切换进行总体控制。ZKFailoverController 能及时检测到 NameNode 的健康状况，在主 NameNode 故障时借助 Zookeeper 实现自动的主备选举和切换，当然 NameNode 目前也支持不依赖于 Zookeeper 的手动主备切换。
+
+Zookeeper 集群：为主备切换控制器提供主备选举支持。
+
+共享存储系统：共享存储系统是实现 NameNode 的高可用最为关键的部分，共享存储系统保存了 NameNode 在运行过程中所产生的 HDFS 的元数据。主 NameNode 和
+
+NameNode 通过共享存储系统实现元数据同步。在进行主备切换的时候，新的主 NameNode 在确认元数据完全同步之后才能继续对外提供服务。
+
+DataNode 节点：除了通过共享存储系统共享 HDFS 的元数据信息之外，主 NameNode 和备 NameNode 还需要共享 HDFS 的数据块和 DataNode 之间的映射关系。DataNode 会同时向主 NameNode 和备 NameNode 上报数据块的位置信息。
+
+ZKFailoverController 作为 NameNode 机器上一个独立的进程启动 (在 hdfs 启动脚本之中的进程名为 zkfc)，启动的时候会创建 HealthMonitor 和 ActiveStandbyElector 这两个主要的内部组件，ZKFailoverController 在创建 HealthMonitor 和 ActiveStandbyElector 的同时，也会向 HealthMonitor 和 ActiveStandbyElector 注册相应的回调方法。
+
+HealthMonitor 主要负责检测 NameNode 的健康状态，如果检测到 NameNode 的状态发生变化，会回调 ZKFailoverController 的相应方法进行自动的主备选举。
+
+ActiveStandbyElector 主要负责完成自动的主备选举，内部封装了 Zookeeper 的处理逻辑，一旦 Zookeeper 主备选举完成，会回调 ZKFailoverController 的相应方法来进行 NameNode 的主备状态切换。
+
+基于 QJM 的共享存储系统主要用于保存 EditLog，并不保存 FSImage 文件。FSImage 文件还是在 NameNode 的本地磁盘上。QJM 共享存储的基本思想来自于 Paxos 算法 ，采用多个称为 JournalNode 的节点组成的 JournalNode 集群来存储 EditLog。
+
+# 三、工作流程
+
+![image](https://www.ibm.com/developerworks/cn/opensource/os-cn-hadoop-name-node/img001.png)
+
+**Active NameNode 和 Standby NameNode：** 两台 NameNode 形成互备，一台处于 Active 状态，为主 NameNode，另外一台处于 Standby 状态，为备 NameNode，只有主 NameNode 才能对外提供读写服务。
+
+**主备切换控制器 ZKFailoverController：** ZKFailoverController 作为独立的进程运行，对 NameNode 的主备切换进行总体控制。ZKFailoverController 能及时检测到 NameNode 的健康状况，在主 NameNode 故障时借助 Zookeeper 实现自动的主备选举和切换，当然 NameNode 目前也支持不依赖于 Zookeeper 的手动主备切换。
+
+**Zookeeper 集群：** 为主备切换控制器提供主备选举支持。
+
+**共享存储系统：** 共享存储系统是实现 NameNode 的高可用最为关键的部分，共享存储系统保存了 NameNode 在运行过程中所产生的 HDFS 的元数据。主 NameNode 和
+
+NameNode 通过共享存储系统实现元数据同步。在进行主备切换的时候，新的主 NameNode 在确认元数据完全同步之后才能继续对外提供服务。
+
+DataNode 节点：除了通过共享存储系统共享 HDFS 的元数据信息之外，主 NameNode 和备 NameNode 还需要共享 HDFS 的数据块和 DataNode 之间的映射关系。DataNode 会同时向主 NameNode 和备 NameNode 上报数据块的位置信息。
+
+## NameNode 的主备切换实现
+
+NameNode 主备切换主要由 **ZKFailoverController、HealthMonitor 和 ActiveStandbyElector** 这 3 个组件来协同实现：
+
+**ZKFailoverController** 作为 NameNode 机器上一个独立的进程启动 (在 hdfs 启动脚本之中的进程名为 zkfc)，启动的时候会创建 HealthMonitor 和 ActiveStandbyElector 这两个主要的内部组件，ZKFailoverController 在创建 HealthMonitor 和 ActiveStandbyElector 的同时，也会向 HealthMonitor 和 ActiveStandbyElector 注册相应的回调方法。
+
+**HealthMonitor** 主要负责检测 NameNode 的健康状态，如果检测到 NameNode 的状态发生变化，会回调 ZKFailoverController 的相应方法进行自动的主备选举。
+
+**ActiveStandbyElector** 主要负责完成自动的主备选举，内部封装了 Zookeeper 的处理逻辑，一旦 Zookeeper 主备选举完成，会回调 ZKFailoverController 的相应方法来进行 NameNode 的主备状态切换。
+
+## NameNode 的共享存储实现
+
+### 背景
+
+过去几年中 Hadoop 社区涌现过很多的 NameNode 共享存储方案，比如 shared NAS+NFS、BookKeeper、BackupNode 和 QJM(Quorum Journal Manager) 等等。目前社区已经把由 Clouderea 公司实现的基于 QJM 的方案合并到 HDFS 的 trunk 之中并且作为默认的共享存储实现，本部分只针对基于 QJM 的共享存储方案的内部实现原理进行分析。为了理解 QJM 的设计和实现，首先要对 NameNode 的元数据存储结构有所了解。
+
+### NameNode 的元数据存储概述
+
+一个典型的 NameNode 的元数据存储目录结构如图 3 所示 (图片来源于参考文献 [4])，这里主要关注其中的 EditLog 文件和 FSImage 文件：
+
+图 3 .NameNode 的元数据存储目录结构
+
+![namenode元数据存储](https://www.ibm.com/developerworks/cn/opensource/os-cn-hadoop-name-node/img003.png)
+
+NameNode 在执行 HDFS 客户端提交的创建文件或者移动文件这样的写操作的时候，会首先把这些操作记录在 EditLog 文件之中，然后再更新内存中的文件系统镜像。内存中的文件系统镜像用于 NameNode 向客户端提供读服务，而 EditLog 仅仅只是在数据恢复的时候起作用。记录在 EditLog 之中的每一个操作又称为一个事务，每个事务有一个整数形式的事务 id 作为编号。EditLog 会被切割为很多段，每一段称为一个 Segment。正在写入的 EditLog Segment 处于 in-progress 状态，其文件名形如 edits_inprogress_${start_txid} ，其中${start_txid} 表示这个 segment 的起始事务 id，例如上图中的 edits_inprogress_0000000000000000020。而已经写入完成的 EditLog Segment 处于 finalized 状态，其文件名形如 edits_${start_txid}-${end_txid}，其中${start_txid} 表示这个 segment 的起始事务 id，${end_txid} 表示这个 segment 的结束事务 id，例如上图中的 edits_0000000000000000001-0000000000000000019。
+
+NameNode 会定期对内存中的文件系统镜像进行 checkpoint 操作，在磁盘上生成 FSImage 文件，FSImage 文件的文件名形如 fsimage_${end_txid}，其中${end_txid} 表示这个 fsimage 文件的结束事务 id，例如上图中的 fsimage_0000000000000000020。在 NameNode 启动的时候会进行数据恢复，首先把 FSImage 文件加载到内存中形成文件系统镜像，然后再把 EditLog 之中 FsImage 的结束事务 id 之后的 EditLog 回放到这个文件系统镜像上。
+
+
+### JournalNode 分析
+
+Active NameNode 和 StandbyNameNode 使用 JouranlNode 集群来进行数据同步的过程如图 5 所示，Active NameNode 首先把 EditLog 提交到 JournalNode 集群，然后 Standby NameNode 再从 JournalNode 集群定时同步 EditLog：
+
+图 5 . 基于 QJM 的共享存储的数据同步机制
+
+![journalNode](https://www.ibm.com/developerworks/cn/opensource/os-cn-hadoop-name-node/img005.png)
+
+**Active NameNode 提交 EditLog 到 JournalNode 集群**
+
+**Standby NameNode 从 JournalNode 集群同步 EditLog**
+
+# 四、安装教程
+
+## 1. 配置文件
+
+### core-site.xml文件
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License. See accompanying LICENSE file.
+-->
+<configuration>
+	<!-- 指定在Hadoop中要使用的文件系统 -->
+	<property>
+		<name>fs.defaultFS</name>
+		<value>hdfs://mycluster</value>
+	</property>
+	<!-- zookeeper集群地址信息 -->
+	<property>
+		<name>ha.zookeeper.quorum</name>
+		<value>bigdata1:2181,bigdata2:2181,bigdata3:2181</value>
+	</property>
+	<!-- HDFS中sequenceFiles中使用的读/写缓冲区的大小 -->
+	<property>
+	  <name>io.file.buffer.size</name>
+	  <value>131072</value>
+	</property>
+</configuration>
+```
+
+### hdfs-site.xml文件
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License. See accompanying LICENSE file.
+-->
+
+
+<!-- Put site-specific property overrides in this file. -->
+
+<configuration>
+  <!-- ~~~~~~~~~~~~~~~~~~~ HDFS常规配置 ~~~~~~~~~~~~~~~~~~~ -->
+  <!-- HDFS中Namenode元数据存储在本地文件系统的位置 -->
+  <property>
+      <name>dfs.namenode.name.dir</name>
+      <value>/opt/data/hadoop/hdfs/namenode</value>
+  </property>
+  <!-- HDFS中Datanode数据块存储在本地文件系统的位置 -->
+  <property>
+      <name>dfs.datanode.data.dir</name>
+      <value>/opt/data/hadoop/hdfs/datanode</value>
+  </property>
+  <!-- HDFS中数据块的副本数量 -->
+  <property>
+      <name>dfs.replication</name>
+      <value>3</value>
+  </property>
+
+  <!-- ~~~~~~~~~~~~~~~~~~~ HDFS HA配置 ~~~~~~~~~~~~~~~~~~~ -->
+    <!-- 此新名称服务的逻辑名称
+    HDFS的名称服务的逻辑名称 -->
+  <property>
+    <name>dfs.nameservices</name>
+    <value>mycluster</value>
+  </property>
+  <!-- dfs.ha.namenodes.[nameservice ID] - nameservice中每个NameNode的唯一标识符
+    配置逗号分隔的NameNode ID列表。DataNodes将使用它来确定集群中的所有NameNode -->
+  <property>
+    <name>dfs.ha.namenodes.mycluster</name>
+    <value>nn1,nn2</value>
+  </property>
+  <!-- dfs.namenode.rpc-address.[nameservice ID].[name node ID] - 要监听的每个NameNode的完全限定RPC地址
+    对于两个先前配置的NameNode ID，请设置NameNode进程的完整地址和IPC端口 -->
+  <property>
+    <name>dfs.namenode.rpc-address.mycluster.nn1</name>
+    <value>bigdata1:8020</value>
+  </property>
+  <property>
+    <name>dfs.namenode.rpc-address.mycluster.nn2</name>
+    <value>bigdata2:8020</value>
+  </property>
+  <!-- dfs.namenode.http-address.[nameservice ID].[name node ID] - 要监听的每个NameNode的完全限定HTTP地址
+    与上面的rpc-address类似，设置两个NameNodes的HTTP服务器的地址以进行监听 -->
+  <property>
+    <name>dfs.namenode.http-address.mycluster.nn1</name>
+    <value>bigdata1:50070</value>
+  </property>
+  <property>
+    <name>dfs.namenode.http-address.mycluster.nn2</name>
+    <value>bigdata2:50070</value>
+  </property>
+  <!-- dfs.namenode.shared.edits.dir - 标识NameNodes将写入/读取编辑的JN组的URI
+    这是一个配置JournalNodes地址的地方，它提供共享编辑存储，由Active nameNode写入并由Standby NameNode读取，以保持Active NameNode所做的所有文件系统更改的最新状态。虽然您必须指定多个JournalNode地址，但您应该只配置其中一个URI。URI的格式应为：qjournal：//host1：port1;host2：port2;host3：port3/journalId。JournalID是此nameservice的唯一标识符，它允许一组JournalNode为多个联合名称系统提供存储。 -->
+  <property>
+    <name>dfs.namenode.shared.edits.dir</name>
+    <value>qjournal://bigdata1:8485;bigdata2:8485;bigdata3:8485/mycluster</value>
+  </property>
+  <!-- dfs.journalnode.edits.dir - JournalNode守护程序将存储其本地状态的路径
+  这是JournalNode计算机上的绝对路径，其中将存储JN使用的编辑和其他本地状态。 -->
+  <property>
+    <name>dfs.journalnode.edits.dir</name>
+    <value>/opt/data/hadoop/jn/data</value>
+  </property>
+  <!-- 启用自动失败转移机制 -->
+  <property>
+   <name>dfs.ha.automatic-failover.enabled</name>
+   <value>true</value>
+  </property>
+  <!-- dfs.client.failover.proxy.provider.[nameservice ID] - HDFS客户端用于联系Active NameNode的Java类
+  配置Java类的名称，DFS客户端将使用该名称来确定哪个NameNode是当前的Active，以及哪个NameNode当前正在为客户端请求提供服务。目前Hadoop附带的两个实现是ConfiguredFailoverProxyProvider和RequestHedgingProxyProvider（对于第一次调用，它同时调用所有名称节点以确定活动的名称，并在后续请求中调用活动的名称节点，直到发生故障转移） -->
+  <property>
+    <name>dfs.client.failover.proxy.provider.mycluster</name>
+    <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
+  </property>
+  <!--  脚本或Java类的列表，用于在故障转移期间屏蔽 Active NameNode
+  对于系统的正确性，期望在任何给定时间只有一个NameNode处于活动状态。重要的是，在使用Quorum Journal Manager时，只允许一个NameNode写入JournalNodes，因此不存在从裂脑情况中破坏文件系统元数据的可能性。但是，当发生故障转移时，以前的Active NameNode仍可能向客户端提供读取请求，这可能已过期，直到NameNode在尝试写入JournalNode时关闭。因此，即使使用Quorum Journal Manager，仍然需要配置一些防护方法。但是，为了在防护机制失败的情况下提高系统的可用性，建议配置防护方法，该方法可保证作为列表中的最后一个防护方法返回成功。请注意，如果您选择不使用实际的防护方法，则仍必须为此设置配置某些内容，例如“ shell（/ bin / true） ”。
+  故障转移期间使用的防护方法配置为回车分隔列表，将按顺序尝试，直到指示防护成功为止 -->
+  <property>
+    <name>dfs.ha.fencing.methods</name>
+    <value>
+      sshfence
+      shell(/bin/true)
+    </value>
+  </property>
+  <property>
+    <name>dfs.ha.fencing.ssh.private-key-files</name>
+    <value>/root/.ssh/id_rsa</value>
+  </property>
+  <!-- fs.defaultFS - Hadoop FS客户端在没有给出时使用的默认路径前缀
+  可选）您现在可以配置Hadoop客户端的默认路径以使用新的启用HA的逻辑URI。 -->
+  <property>
+    <name>fs.defaultFS</name>
+    <value>hdfs://mycluster</value>
+  </property>
+</configuration>
+```
+## 2. 启动教程
+1. 首先停止集群
+```
+stop-all.sh
+```
+
+1.1 先在windows中使用sublimetext修改好core-site.xml和hdfs-site.xml中的内容（主要修改主机名），然后直接全部粘贴到自己现有的Hadoop应用程序中，直接进行以下操作即可
+
+2. 在ZooKeeper中初始化所需的状态。可以从任意一个NameNode主机运行以下命令来执行此操作。
+```shell
+# hdfs zkfc -formatZK
+```
+
+这将在zookeeper中创建一个znode,其中存储的是自动故障转移相关的数据
+不管过程中显示的信息如何,只要能看到如下信息即可:
+ 
+2. 启动journalnode,在**每个**配置了JN主机上启动JN
+```shell
+hadoop-daemon.sh start journalnode
+```
+启动完JN进程后稍等2分钟左右再进行下述操作
+
+3. 格式化HDFS 在第一个namenode上执行
+```shell
+hdfs namenode -format
+```
+
+4. 在第一个namenode上启动hdfs集群
+```shell
+start-dfs.sh     #注意：这时候第二个namenode进程可能会起不来
+```
+5. 去第二个namenode上同步第一个namenode上的数据
+```
+hdfs namenode -bootstrapStandby
+```
+
+6. 单独在第二个namenode上启动或在第一个namenode所在的机器上执行HDFS集群启动命令
+建议第二种方式：
+```shell
+start-dfs.sh     # 注意在这里会有很多进程已经启动了，忽略之
+```
+
+在设置了所有必需的配置选项后，必须在将运行它们的一组计算机上启动JournalNode守护程序。这可以通过运行命令“ ```hadoop-daemon.sh start journalnode``` ”并等待守护进程在每个相关机器上启动来完成。
+
+## 3. 在已经运行hadoop的集群上安装高可用
+
+在升级的时候需要按照以下的步骤进行操作：
+
+1.  对 Zookeeper 进行初始化，创建 Zookeeper 上的/hadoop-ha/${dfs.nameservices} 节点。创建节点是为随后通过 Zookeeper 进行主备选举做好准备，在进行主备选举的时候会在这个节点下面创建子节点 (具体可参照“ActiveStandbyElector 实现分析”一节的叙述)。这一步通过在原有的 NameNode 上执行命令 hdfs zkfc -formatZK 来完成。
+2.  启动所有的 JournalNode，这通过脚本命令 hadoop-daemon.sh start journalnode 来完成。
+3.  对 JouranlNode 集群的共享存储目录进行格式化，并且将原有的 NameNode 本地磁盘上最近一次 checkpoint 操作生成 FSImage 文件 (具体可参照“NameNode 的元数据存储概述”一节的叙述) 之后的 EditLog 拷贝到 JournalNode 集群上的共享目录之中，这通过在原有的 NameNode 上执行命令 hdfs namenode -initializeSharedEdits 来完成。
+4.  启动原有的 NameNode 节点，这通过脚本命令 hadoop-daemon.sh start namenode 完成。
+5.  对新增的 NameNode 节点进行初始化，将原有的 NameNode 本地磁盘上最近一次 checkpoint 操作生成 FSImage 文件拷贝到这个新增的 NameNode 的本地磁盘上，同时需要验证 JournalNode 集群的共享存储目录上已经具有了这个 FSImage 文件之后的 EditLog(已经在第 3 步完成了)。这一步通过在新增的 NameNode 上执行命令 hdfs namenode -bootstrapStandby 来完成。
+6.  启动新增的 NameNode 节点，这通过脚本命令 hadoop-daemon.sh start namenode 完成。
+7.  在这两个 NameNode 上启动 zkfc(ZKFailoverController) 进程，谁通过 Zookeeper 选主成功，谁就是主 NameNode，另一个为备 NameNode。这通过脚本命令 hadoop-daemon.sh start zkfc 完成。 
+
+## HA检测
+主动杀死处于active状态的namenode进程，查看另一个namenode的状态是否变为active状态。
+## 主备切换常用命令
+```
+hdfs haadmin -help <command >”。
+```
+- 帮助信息
+
+```
+transitionToActive和transitionToStandby
+```
+- 将给定NameNode的状态转换为Active或Standby
+这些子命令使给定的NameNode分别转换为Active或Standby状态。这些命令不会尝试执行任何防护，因此很少使用。相反，人们几乎总是喜欢使用“ hdfs haadmin -failover ”子命令。
+
+```
+failover 
+```
+- 在两个NameNode之间启动故障转移
+此子命令导致从第一个提供的NameNode到第二个NameNode的故障转移。如果第一个NameNode处于待机状态，则此命令只会将第二个状态转换为活动状态而不会出现错误。如果第一个NameNode处于Active状态，则会尝试将其正常转换为Standby状态。如果失败，将按顺序尝试防护方法（由dfs.ha.fencing.methods配置），直到成功为止。只有在此过程之后，第二个NameNode才会转换为活动状态。如果没有防护方法成功，则第二个NameNode将不会转换为活动状态，并且将返回错误。
+```
+getServiceState
+```
+- 确定给定的NameNode是Active还是Standby
+连接到提供的NameNode以确定其当前状态，适当地将“待机”或“活动”打印到STDOUT。此子命令可能由cron作业或监视脚本使用，这些脚本需要根据NameNode当前是活动还是待机而表现不同。
+```
+checkHealth 
+```
+- 检查给定NameNode的运行状况
+连接到提供的NameNode以检查其运行状况。NameNode能够对自身执行某些诊断，包括检查内部服务是否按预期运行。如果NameNode是健康的，则此命令将返回0，否则返回非零。可以使用此命令进行监视。
