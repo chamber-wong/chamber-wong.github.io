@@ -1,7 +1,7 @@
 ---
 layout:     post
 title:      "HDFS的shell操作详解"
-subtitle:   ""
+subtitle:   "HDFS的shell操作详解"
 date:       2018-09-11 12:00:00
 author:     "Chamber"
 header-img: "img/post-bg-2015.jpg"
