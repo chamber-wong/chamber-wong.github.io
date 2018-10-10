@@ -1,7 +1,7 @@
 ---
 layout:     post
 title:      "MapReduce的高级特性和实例实战"
-subtitle:   ""
+subtitle:   "MapReduce的高级特性和实例实战"
 date:       2018-09-30 12:00:00
 author:     "Chamber"
 header-img: "img/post-bg-2015.jpg"
