@@ -1,0 +1,213 @@
+---
+layout:     post
+title:      "java基础之集合二"
+subtitle:   "泛型和map"
+date:       2018-08-10 12:00:00
+author:     "Chamber"
+header-img: "img/post-bg-2015.jpg"
+catalog: true
+tags:
+    - java
+    - 集合
+    - Java基础
+    - 数据类型
+---
+# 泛型
+
+> 通过<数据类型>接收一种数据类型,在编译的时候会使用这种类型检测集合中的元素,如果不是<>中规定的类型,就不允许添加到集合中(编译不通过).
+
+```
+ArrayList<String> list = new ArrayList<>();
+//只要泛型确定后,迭代器的类型也会随之确定
+Iterator<String> i = list.iterator()
+```
+
+**泛型的作用:**
+1. 使用了泛型不再需要进项强制类型转换,容错处理,向下转型----简化代码
+2. 将运行阶段的问题,提前到了便一阶段检查----提高了安全性,提高了编程的效率
+
+
+**可以使用泛型的位置:**
+1. 类
+2. 方法
+3. 接口
+
+## 在类上使用泛型:
+```
+/*
+class 类名称 <泛型标识：可以随便写任意标识号，标识指定的泛型的类型>{
+  private 泛型标识 /*（成员变量类型）*/ var; 
+  .....
+  }
+}
+*/
+
+//此处T可以随便写为任意标识，常见的如T、E、K、V等形式的参数常用于表示泛型
+//在实例化泛型类时，必须指定T的具体类型
+public class Generic<T>{ 
+    //key这个成员变量的类型为T,T的类型由外部指定  
+    private T key;
+
+    public Generic(T key) { //泛型构造方法形参key的类型也为T，T的类型由外部指定
+        this.key = key;
+    }
+
+    public T getKey(){ //泛型方法getKey的返回值类型为T，T的类型由外部指定
+        return key;
+    }
+}
+```
+## 在方法上使用泛型:
+1. 方法上的泛型与类上的泛型保持一致,类上的泛型确定了,方法上的泛型就确定了
+```
+class teacher<E>{
+    public void show (E e){
+        
+    }
+}
+```
+2. 方法上拥有自己的泛型
+
+**注意:** 泛型在使用之前一定要进行声明
+**声明的方式:** 在方法的最前面加<数据类型><br>
+**作用** 让方法内与方法保持一致
+```
+public <F> void play(F f){
+
+}
+```
+3. 静态方法上使用泛型
+
+静态方法无法使用类生的泛型,类型上的泛型必须通过创建对象使用.<br>
+静态方法不需要对象,所以静态方法必须自己使用泛型
+```
+public static<W> void eat(W e){
+    
+}
+```
+
+## 在接口上使用泛型
+
+泛型接口与泛型类的定义及使用基本相同。
+
+```
+//定义一个泛型接口
+public interface Generator<T> {
+    public T next();
+}
+```
+
+1. 当实现泛型接口的类，未传入泛型实参时：
+```
+/**
+ * 未传入泛型实参时，与泛型类的定义相同，在声明类的时候，需将泛型的声明也一起加到类中
+ * 即：class FruitGenerator<T> implements Generator<T>{
+ * 如果不声明泛型，如：class FruitGenerator implements Generator<T>，编译器会报错："Unknown class"
+ */
+class FruitGenerator<T> implements Generator<T>{
+    @Override
+    public T next() {
+        return null;
+    }
+}
+```
+
+2. 当实现泛型接口的类，传入泛型实参时：
+```
+/**
+ * 传入泛型实参时：
+ * 定义一个生产器实现这个接口,虽然我们只创建了一个泛型接口Generator<T>
+ * 但是我们可以为T传入无数个实参，形成无数种类型的Generator接口。
+ * 在实现类实现泛型接口时，如已将泛型类型传入实参类型，则所有使用泛型的地方都要替换成传入的实参类型
+ * 即：Generator<T>，public T next();中的的T都要替换成传入的String类型。
+ */
+public class FruitGenerator implements Generator<String> {
+
+    private String[] fruits = new String[]{"Apple", "Banana", "Pear"};
+
+    @Override
+    public String next() {
+        Random rand = new Random();
+        return fruits[rand.nextInt(3)];
+    }
+}
+```
+
+## 泛型通配符
+
+**想要在泛型中使用多态**
+```
+public void showKeyValue1(Generic<Number> obj){
+    Log.d("泛型测试","key value is " + obj.getKey());
+}
+```
+```
+Generic<Integer> gInteger = new Generic<Integer>(123);
+Generic<Number> gNumber = new Generic<Number>(456);
+
+showKeyValue(gNumber);
+
+// showKeyValue这个方法编译器会为我们报错：Generic<java.lang.Integer> 
+// cannot be applied to Generic<java.lang.Number>
+// showKeyValue(gInteger);
+```
+通过提示信息我们可以看到Generic<Integer>不能被看作为`Generic<Number>的子类。由此可以看出:同一种泛型可以对应多个版本（因为参数类型是不确定的），不同版本的泛型类实例是不兼容的。
+
+**所以,需要使用通配符**
+```
+public void showKeyValue1(Generic<?> obj){
+    Log.d("泛型测试","key value is " + obj.getKey());
+}
+```
+---
+---
+---
+
+### 限制上限
+
+> 限制上限\\**<? extends E>:** 限制的是整个的<>可以取得泛型类型的上限是E,<>中可以取的类型是E及E的子类
+
+
+### 限制下限
+
+> 限制下限\\**<? super E>:** 限制的是整个的<>可以取得泛型类型的下限是E,<>中可以取的类型是E及E的子类
+
+# Map:---接口
+
+> 本身是一个接口,存储的是键值对,一个元素就是一个键(key)值(value)对,key必须是唯一的,value可以相同
+
+**常用方法**
+
+介绍Map接口的方法
+功能 | 方法 | 说明
+:-|:-|:-
+增加| V put(K key,V value) | 增加一个键值对,关于返回值:如果当前的key没有对应值,返回null.如果已经有值了,会将原来被替换的值返回
+-| void putAll(Map<? extends K,? extends V> map) | 增加多个
+删除| V remove(Object key)|根据key删除元素
+-| void clear() | 删除全部
+获取 | V get(Object key) | 根据key查找元素
+- | int size() | 获取键值对的个数
+遍历 | Set<K> keySet() | 遍历方法一
+- | Set<Map.Entry<K,V>> entrySet() |  遍历方法二
+常用的判断| boolean isEmpty() | 判断是否为空
+-| boolean containsKey(K key) | 是否包含当前的key
+-| boolean containsValue(V value) |  是否包含当前的value
+
+## HashMap:---类
+
+HashMap 是基于哈希表的 Map 接口的实现。此实现提供所有可选的映射操作，并允许使用 null 值和 null 键。（除了非同步和允许使用 null 之外，HashMap 类与 Hashtable 大致相同。）此类不保证映射的顺序，特别是它不保证该顺序恒久不变。
+
+## TreeMap:---类
+
+
+# 作业
+
+1. 模拟栈
+2. askdjnaskjdfnlkajsbfdkjas要求:转化成字符串:a(字符的个数)b()c()----使用treeMap作
+3. 让key去实现comparavle接口
+
+
+查询:
+1. 哈希表
+2. hashmap的内存结构(底层实现)
+3. 

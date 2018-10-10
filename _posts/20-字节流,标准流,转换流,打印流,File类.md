@@ -1,0 +1,206 @@
+---
+layout:     post
+title:      "java基础之流二"
+subtitle:   "字节流,标准流,转换流,打印流"
+date:       2018-08-20 12:00:00
+author:     "Chamber"
+header-img: "img/post-bg-2015.jpg"
+catalog: true
+tags:
+    - java
+    - 流
+    - Java基础
+    - 数据类型
+---
+1. **字符流:**----传输的是字符,只能传输字符.
+
+    1. **字符读入流:** Reader
+           read()  read(数组)
+    2. **字符写出流:** Writer
+           write()  write(字符数组) write(字符串)
+    3. **字符缓冲写出流:**  BufferedWriter
+           newLine()   跨平台换行
+    4. **字符缓冲读入流:**  BufferedReader
+    
+2. **字节流:** ----可传输任何类型的数据
+
+    1. **字节输出流:** OutputStream
+    1. **字节输入流:** InputStream
+    1. **节缓冲输出流**  BufferedOutputStream
+    1. **字节缓冲输入流:**  BufferedInputStream
+
+# 字节流
+可传输任何类型的数据
+## 字节输出流
+```
+// 1.创建输出流对象并关联文件
+FileOutputStream fileOutputStream = new FileOutputStream("temp1.txt");
+// 2. 写---因为使用的是字节流,所以不能直接传输字符,要进行编码
+fileOutputStream.write("孙燕姿".getBytes());// 对应的默认字符集为utf8
+```
+
+## 字节输入流
+
+三种方法:
+
+实现1:一个字节一个字节的读
+```
+// 1. 创建输入流对象
+FileInputStream fileInputStream = new FileInputStream("temp1.txt");
+// 2. 读
+int num;
+while ((num = fileInputStream.read()) != -1) {
+	System.out.print((char) num);
+}
+// 3. 关流
+fileInputStream.close();
+```
+实现读2:一次读取多个字节
+```
+// 1. 创建输入流对象
+FileInputStream fileInputStream = new FileInputStream("temp1.txt");
+// 2. 读
+byte[] arr = new byte[3];
+int num;
+while ((num = fileInputStream.read(arr)) != -1) {
+	System.out.print(new String(arr, 0, num));
+}
+// 3. 关流
+fileInputStream.close();
+```
+实现读3:一次读取全部字节
+```
+// 1. 创建输入流对象
+FileInputStream fileInputStream = new FileInputStream("temp1.txt");
+// 2. 获取所有的字节数
+// 注意:如果文本的字节数太大不建议使用
+int length = fileInputStream.available();
+// 3. 读
+byte[] arr = new byte[length];
+fileInputStream.read(arr);
+System.out.println(new String(arr));
+// 4. 关流
+fileInputStream.close();
+```
+
+# 字节缓冲输入流
+和字符缓冲输入流相同,本身并不具备读的能力,需要传入字节缓冲输入流对象,实现读写.<br>
+**能够提高效率**
+```
+BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(fileOutputStream);
+```
+# 字节缓冲输出流
+作用同上
+
+```
+BufferedInputStream bufferedInputStream = new BufferedInputStream(fileInputStream);
+```
+
+
+# 标准输入流
+
+> System.in:此流已经被打开了,准备提供数据,这个流默认对应于键盘(输入源)的输入或者由主机或用户指定的另一个输入源
+
+可以直接得到标准输入流对象,并已经绑定了键盘,直接可以从键盘接收数据
+
+```
+InputStream inputStream = System.in;
+```
+
+
+
+# 标准输出流
+
+> 可以指定系统输出的方式
+
+OutputStream outputStream = System.out;
+
+# 更换输入源,输出源
+临时更换,只能在当前程序中使用更换后的输入源输出源,如果在其他程序在会自动变回原来的输入源输出源
+
+- 实现从键盘->控制台 更新成 从文件->文件
+```
+//将System.in对应的输入源从键盘更换成了文件
+System.setIn(new FileInputStream("temp1.txt"));
+//将System.out对应的输出源从控制台更换成了文件
+System.setOut(new PrintStream("temp4.txt"));
+
+//进行读写操作
+BufferedReader bufferedReader1 = new BufferedReader(new InputStreamReader(System.in));
+BufferedWriter bufferedWriter1 = new BufferedWriter(new OutputStreamWriter(System.out));
+//↑↑↑↑这里已经变成了从文件输入
+```
+
+
+# 输入转换流
+
+用于将字节流转换为字符流,转换之后可以进行字符操作
+
+同时在转换的时候可以指定字符类型:
+```
+InputStreamReader(InputStream in, String charsetName)
+```
+常用方法:
+```
+//获取字符缓冲流,
+BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));
+BufferedWriter bufferedWriter = new BufferedWriter(new OutputStreamWriter(System.out));
+```
+
+# 设备之间数据传输的总结
+输入源:键盘 输出源:控制台
+
+输入源:键盘 输出源:文件
+
+输入源:文件 输出源:控制台
+
+输入源:文件 输出源:文件
+```
+// 将键盘作为输入源
+BufferedReader bufferedReader1 = new BufferedReader(new InputStreamReader(System.in));
+// 将文件作为输入源
+BufferedReader bufferedReader2 = new BufferedReader(new FileReader("temp1.txt"));
+// 将控制台作为输出源
+BufferedWriter bufferedWriter1 = new BufferedWriter(new OutputStreamWriter(System.out));
+// 将文件作为输出源
+BufferedWriter bufferedWriter2 = new BufferedWriter(new FileWriter("temp2.txt"));
+```
+
+# PrintStream流
+字节打印流:PrintStream:除了拥有输出流的特点之外,还有打印的功能.
+
+字符打印流:PrintWriter:
+
+#### 字节打印流支持的设备:
+1. File类型的文件
+2. 字符串类型的文件
+3. 字节输出流
+ 
+# PrintWriter类
+
+#### 支持的设备:
+1. File类型的文件
+1. String类型的文件
+1. 字节流对象
+1. 字符流对象
+
+```
+//从键盘输入数据
+BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));
+
+//从内存到控制台
+PrintWriter printWriter = new PrintWriter(System.out);
+
+//进行读写
+String data = null;
+while ((data = bufferedReader.readLine()) != null) {
+	printWriter.println(data);
+	printWriter.flush();
+}
+
+bufferedReader.close();
+printWriter.close();
+```
+# File类
+
+详情见Java API中的File

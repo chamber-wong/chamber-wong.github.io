@@ -1,0 +1,203 @@
+---
+layout:     post
+title:      "java基础之集合"
+subtitle:   "list和set详解"
+date:       2018-08-09 12:00:00
+author:     "Chamber"
+header-img: "img/post-bg-2015.jpg"
+catalog: true
+tags:
+    - java
+    - 集合
+    - Java基础
+    - 数据类型
+---
+接12天的内容
+
+---
+
+# 集合
+- 数组:<br>
+可以存储不同类型的多个数据,数据类型可以是简单数据类型,也可以是引用数据类型<br>
+**缺点:**   创建的是一个定值,只能存储固定长度的数据,一旦存满了,就不能再继续存储
+- 集合<br>
+可以存储不同类型的多个数据,但是只能存储引用数据类型<br>
+**缺点:** 只能存储引用数据类型<br>
+**优点:** 存储空间会随和存储数据的增大而增大,所以可以更加喝了的利用内存空间,方法也很多
+
+- 存储的分类:
+1. 短期存储:一旦计算机关闭,存储的内容会被立刻释放----变量,对象,数组,集合
+2. 长期存储:直接存储在磁盘上,可以长久的保存,数据不会随着计算机的关闭而消失.----.mp4,.mp3,.txt等文件
+
+## Collection:---接口
+方法:
+
+增加：
+```
+       1：add()   将指定对象存储到容器中
+
+                      add 方法的参数类型是Object 便于接收任意对象
+
+       2：addAll() 将指定集合中的元素添加到调用该方法和集合中
+```
+删除：
+```
+       3：remove() 将指定的对象从集合中删除
+
+       4：removeAll() 将指定集合中的元素删除
+```
+修改
+```
+       5：clear() 清空集合中的所有元素
+```
+判断
+```
+       6：isEmpty() 判断集合是否为空
+
+       7：contains() 判断集合何中是否包含指定对象
+
+           
+
+       8：containsAll() 判断集合中是否包含指定集合
+
+                            使用equals()判断两个对象是否相等 
+```
+
+获取:  
+```
+        9：int size()    返回集合容器的大小
+```
+
+转成数组
+```
+        10： toArray()   集合转换数组
+```
+
+#### 迭代器
+
+- 获取迭代器对象
+```
+//1.获取迭代器对象
+Iterator<String> iterator = collection.iterator();
+//2.通过方法实现遍历
+while (iterator.hasNext()) {
+	String string = iterator.next();
+	System.out.println(string);
+}
+```
+
+**注意点**
+
+```
+//1.直接在此使用第一次的iterator金香槟简历,遍历失败,因为当前指针已经指向了集合的最后
+//再次使用hasnext会直接返回false.所以如果想再次遍历,要重新获取迭代器对象.
+while (iterator.hasNext()) {
+	String string = (String) iterator.next();
+	
+}
+
+//2.集合可以同时存储不同类型的数据
+collection.add(1);
+
+//3.再次遍历--当集合中存在不同了类型的数据是,需要进行容错处理和向下转型
+Iterator iterator2 = collection.iterator();
+while (iterator2.hasNext()) {
+	Object object = iterator2.next();
+	
+	if (!(object instanceof String)) {
+		throw new ClassCastException();
+	}
+	
+	//向下转型
+	String string = (String)object;
+	System.out.println(string);
+}
+```
+
+#### List:---接口
+
+> 存储的数据是有序的,可以重复的
+
+contains(object)方法用于对比集合中有没有指定元素----实际上是调用list中存储元素的equals方法区对比
+
+
+###### ArrayList:---类
+
+> 底层的数据结构是数组,线程不安全的.:特点:查找速度快,添加删除速度慢
+
+###### Vector:---类
+
+> 底层的数据结构是数组,线程安全的.:特点:查找速度快,添加删除速度慢
+
+- 数据增长:当需要增长时 **,Vector默认增长为原来一培，而ArrayList却是原来的一半** 
+
+###### LinkedList:---类
+
+> 底层是链表,线程不安全的.特点:查找速度慢,添加删除速度快
+
+特有的方法:
+方法名|说明
+:-|:-
+addFirst() | 始终在首位添加
+addLast() | 始终在末尾添加
+getFirst() | 获取的对象不存在会发生异常
+getLast() | 从末尾开始获取
+removeFirst() | 删除的对象不存在会发生异常
+removeLast() | 从末尾开始删除
+
+从jdk1.6开始出现以下方法
+方法名|说明
+:-|:-
+offerFirst() | 取出第一个值
+offerLast() |  取出最后一个值
+peekFirst() |  获取的对象不存在会返回null
+peekLast() | 获取最后一个值
+pollFirst() |  删除的对象不存在会返回null
+pollLast() | 删除最后一个值
+
+
+#### Set:---接口
+
+> 存储的数据是无序的,不可以重复的
+
+###### HashSet:---类
+
+> 底层是哈希表,线程不安全的
+
+**hashSet的假排现象**<br>
+https://blog.csdn.net/zcc7up/article/details/59066267
+
+**实现去重:**<br>
+是通过调用元素内部的hashCode和equals方法去重,首先调用hashCosh方法,比较两个元素的哈希值,如果哈希值不同,直接认为是两个对象,停止比较.如果哈希值相同,再去调用equals方法,返回true,认为是一个对象,返回false,认为是两个对象
+
+###### 注意:
+1. hashSet本身不能实现排序
+2. 对于自定义的类,要想按照自己制定的比较规则进行去重,必须重写hashCode和equals方法,
+
+###### TreeSet---类
+
+>底层是二叉树,线程不安全的
+
+**可以实现去重和排序**
+
+**重写了add方法,原理:**
+在add方法中调用了字符串的compareTo方法,在实现去重的同时就排好序了
+**TreeSet的第一种排序方式:**实现comparable接口的compareTo方法--系统排序
+**TreeSet的第二种排序方式:**实现了comparator接口的compare方法---人工排序<br>
+系统让人工排序的优先级高于系统排序,方便人工排序的实现
+
+## Map:---接口
+
+###### HashMap:---类
+
+###### TreeMap:---类
+
+
+
+## 作业:
+1. 模拟队列:
+
+入队
+出队
+判空
+2. 使用
